@@ -129,7 +129,7 @@
             }
 
             // 發送交易
-            const tx = await contract.set(val);
+            const tx = await contract.set(val, { gasLimit: 100000 });
             document.getElementById('status').innerText = "🚀 交易已送出！等待區塊鏈確認...\nHash: " + tx.hash;
             
             await tx.wait(); // 等待打包完成
