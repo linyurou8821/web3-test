@@ -5,11 +5,13 @@
     <title>Web3 智能合約練習</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        .container { max-width: 600px; margin: auto; border: 1px solid #ccc; padding: 20px; border-radius: 10px; }
-        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
-        input { padding: 10px; width: 200px; }
-        .status { margin-top: 20px; padding: 10px; background: #f4f4f4; }
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f9f9f9; }
+        .container { max-width: 600px; margin: auto; border: 1px solid #ccc; padding: 20px; border-radius: 10px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        input { padding: 10px; width: 200px; border: 1px solid #ddd; border-radius: 5px; }
+        .status { margin-top: 20px; padding: 15px; background: #eee; border-radius: 5px; word-break: break-all; }
+        #interactionZone { margin-top: 20px; padding-top: 20px; border-top: 2px dashed #eee; }
     </style>
 </head>
 <body>
@@ -19,22 +21,21 @@
     <p>合約地址: <code>0x5e8932160fcD34C22C0d2dE426e5f89Ab5c53F21</code></p>
     
     <button onclick="connectWallet()">1. 連結錢包 (MetaMask)</button>
-    <p id="walletAddress">錢包狀態：未連結</p>
+    <p id="walletAddress" style="color: #666;">錢包狀態：未連結</p>
 
-    <hr>
+    <div id="interactionZone" style="display: none;">
+        <h3>改變合約變數</h3>
+        <p>請輸入要寫入合約的數字：</p>
+        <input type="number" id="newValue" placeholder="輸入新的數字">
+        <button onclick="setValue()" style="background: #28a745;">更新數值</button>
+    </div>
 
-    <h3>改變合約變數</h3>
-    <input type="number" id="newValue" placeholder="輸入新的數字">
-    <button onclick="setValue()">更新數值</button>
-
-    <div class="status" id="status">狀態預覽：等待操作...</div>
+    <div class="status" id="status">狀態預覽：請先點擊上方按鈕連結錢包...</div>
 </div>
 
 <script>
-    // 配置合約資訊
+    // 配置合約資訊 (確保這是你在 Sepolia 部署的地址)
     const contractAddress = "0x5e8932160fcD34C22C0d2dE426e5f89Ab5c53F21";
-    // 注意：這裡的 ABI 必須根據你實際部署的合約 function 調整，
-    // 以下假設你的合約有 set(uint256) 功能
     const contractABI = [
         "function set(uint256 x) public",
         "function get() public view returns (uint256)"
@@ -42,30 +43,54 @@
 
     let provider, signer, contract;
 
+    // --- 連結錢包函式 ---
     async function connectWallet() {
         if (typeof window.ethereum !== 'undefined') {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            await provider.send("eth_requestAccounts", []);
-            signer = provider.getSigner();
-            const address = await signer.getAddress();
-            document.getElementById('walletAddress').innerText = "錢包狀態：已連結 " + address;
-            contract = new ethers.Contract(contractAddress, contractABI, signer);
+            try {
+                // 請求帳號授權 (每次重新整理後點擊都會觸發)
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const address = accounts[0];
+
+                // 初始化 ethers 
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+                // 更新介面
+                document.getElementById('walletAddress').innerText = "✅ 已連結：" + address;
+                document.getElementById('status').innerText = "連線成功！現在可以操作合約了。";
+                
+                // 【關鍵】顯示互動區塊
+                document.getElementById('interactionZone').style.display = 'block';
+                
+            } catch (err) {
+                console.error(err);
+                document.getElementById('status').innerText = "連線失敗：" + err.message;
+            }
         } else {
-            alert("請安裝 MetaMask！");
+            alert("未偵測到 MetaMask，請先安裝插件！");
         }
     }
 
+    // --- 寫入合約函式 ---
     async function setValue() {
         if (!contract) return alert("請先連結錢包");
+        
         const val = document.getElementById('newValue').value;
+        if (!val) return alert("請輸入數字");
+
         try {
-            document.getElementById('status').innerText = "交易發送中...";
+            document.getElementById('status').innerText = "⏳ 正在發送交易，請在 MetaMask 確認...";
+            
             const tx = await contract.set(val);
-            await tx.wait();
-            document.getElementById('status').innerText = "更新成功！交易 Hash: " + tx.hash;
+            document.getElementById('status').innerText = "🚀 交易已送出，等待區塊鏈確認...\nHash: " + tx.hash;
+            
+            await tx.wait(); // 等待交易打包
+            document.getElementById('status').innerText = "🎉 更新成功！數值已寫入合約。";
+            document.getElementById('newValue').value = ""; // 清空輸入框
         } catch (err) {
             console.error(err);
-            document.getElementById('status').innerText = "交易出錯，請檢查 Console";
+            document.getElementById('status').innerText = "❌ 交易失敗，請檢查網路或餘額。";
         }
     }
 </script>
