@@ -2,47 +2,48 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Web3 智能合約練習</title>
+    <title>Web3 智能合約練習 - 最終穩定版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f9f9f9; }
-        .container { max-width: 600px; margin: auto; border: 1px solid #ccc; padding: 20px; border-radius: 10px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; margin: 5px 0; }
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f7f9; }
+        .container { max-width: 600px; margin: auto; border: 1px solid #ccc; padding: 25px; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .verify-box { background: #eef6ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #b6d4fe; }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.3s; }
         button:hover { background: #0056b3; }
-        input { padding: 10px; width: 90%; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
-        .status { margin-top: 20px; padding: 15px; background: #eee; border-radius: 5px; word-break: break-all; border-left: 5px solid #007bff; }
-        #interactionZone { margin-top: 20px; padding-top: 20px; border-top: 2px dashed #eee; display: none; }
-        .verify-box { background: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        input { padding: 12px; width: 95%; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; font-family: monospace; }
+        .status { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; word-break: break-all; border-left: 5px solid #007bff; font-size: 0.9em; }
+        #interactionZone { margin-top: 20px; padding-top: 20px; border-top: 2px dashed #ddd; display: none; }
+        code { background: #eee; padding: 2px 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>Web3 合約互動測試</h1>
-    <p>合約地址: <code>0x5e8932160fcD34C22C0d2dE426e5f89Ab5c53F21</code></p>
+    <p>目標合約: <code>0x5e8932160fcD34C22C0d2dE426e5f89Ab5c53F21</code></p>
     
     <div class="verify-box">
         <h3>第一步：身分與網路驗證</h3>
-        <p>請手動輸入您的錢包地址：</p>
-        <input type="text" id="manualAddress" placeholder="貼上您的 0x... 地址">
-        <br>
-        <button onclick="connectAndVerify()">連結錢包並驗證</button>
+        <p>請貼上您的錢包地址 (需含有 Sepolia ETH)：</p>
+        <input type="text" id="manualAddress" placeholder="0x...">
+        <button onclick="connectAndVerify()">1. 連結並強制切換 Sepolia</button>
     </div>
     
-    <p id="walletAddress" style="color: #666;">錢包狀態：尚未連結</p>
+    <p id="walletAddress" style="color: #666; font-weight: bold;">驗證狀態：尚未連線</p>
 
     <div id="interactionZone">
-        <h3>第二步：改變合約變數</h3>
-        <p>請輸入要寫入合約的數字：</p>
-        <input type="number" id="newValue" placeholder="輸入新的數字" style="width: 200px;">
-        <button onclick="setValue()" style="background: #28a745;">更新數值</button>
+        <h3>第二步：更新合約數值</h3>
+        <p>輸入要寫入的整數：</p>
+        <input type="number" id="newValue" placeholder="例如: 888" style="width: 150px;">
+        <button onclick="setValue()" style="background: #28a745;">2. 送出交易</button>
     </div>
 
-    <div class="status" id="status">狀態預覽：請先完成地址輸入與連線...</div>
+    <div class="status" id="status">提示：請先完成第一步驗證。</div>
 </div>
 
 <script>
-    // 配置合約資訊
+    // 配置資訊
     const contractAddress = "0x5e8932160fcD34C22C0d2dE426e5f89Ab5c53F21";
     const contractABI = [
         "function set(uint256 x) public",
@@ -51,26 +52,22 @@
 
     let provider, signer, contract;
 
-    // --- 核心：連結、強制換網、比對地址 ---
+    // --- 連結、換網、驗證 ---
     async function connectAndVerify() {
         const userInputAddr = document.getElementById('manualAddress').value.trim().toLowerCase();
-        
-        if (!userInputAddr) {
-            alert("請先輸入您的錢包地址！");
-            return;
-        }
+        if (!userInputAddr) return alert("請輸入地址！");
 
-        if (typeof window.ethereum !== 'undefined') {
+        if (window.ethereum) {
             try {
-                // 1. 【重點】強制 MetaMask 切換到 Sepolia (0xaa36a7)
+                // 1. 強制要求 MetaMask 切換到 Sepolia (chainId: 11155111)
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0xaa36a7' }],
+                        params: [{ chainId: '0xaa36a7' }], 
                     });
-                } catch (switchError) {
-                    // 如果錢包沒加過 Sepolia 網路，則幫忙加入
-                    if (switchError.code === 4902) {
+                } catch (err) {
+                    // 如果錢包沒加過此網路，則嘗試新增
+                    if (err.code === 4902) {
                         await window.ethereum.request({
                             method: 'wallet_addEthereumChain',
                             params: [{
@@ -84,55 +81,66 @@
                     }
                 }
 
-                // 2. 請求連線帳號
+                // 2. 獲取帳號
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 const metaMaskAddr = accounts[0].toLowerCase();
 
-                // 3. 比對地址是否一致
+                // 3. 比對地址
                 if (userInputAddr !== metaMaskAddr) {
-                    document.getElementById('status').innerHTML = "<span style='color:red; font-weight:bold;'>❌ 地址不匹配！</span><br>輸入地址與 MetaMask 目前帳號不符。";
+                    document.getElementById('status').innerHTML = "<b style='color:red;'>❌ 地址不匹配！</b><br>您輸入的地址與 MetaMask 選取的帳號不同，請切換帳號或修正輸入。";
                     document.getElementById('interactionZone').style.display = 'none';
                     return;
                 }
 
-                // 4. 初始化 ethers
+                // 4. 初始化
                 provider = new ethers.providers.Web3Provider(window.ethereum);
                 signer = provider.getSigner();
                 contract = new ethers.Contract(contractAddress, contractABI, signer);
 
-                // 更新介面顯示
                 document.getElementById('walletAddress').innerText = "✅ 驗證成功：" + metaMaskAddr;
-                document.getElementById('status').innerText = "連線成功且網路已切換至 Sepolia。現在可以操作合約了。";
+                document.getElementById('status').innerText = "網路已就緒 (Sepolia)，請執行第二步。";
                 document.getElementById('interactionZone').style.display = 'block';
-                
+
             } catch (err) {
-                console.error(err);
-                document.getElementById('status').innerText = "連線失敗：" + err.message;
+                document.getElementById('status').innerText = "錯誤：" + err.message;
             }
         } else {
-            alert("未偵測到 MetaMask，請先安裝插件！");
+            alert("請安裝 MetaMask！");
         }
     }
 
-    // --- 寫入合約函式 ---
+    // --- 發送交易 ---
     async function setValue() {
-        if (!contract) return alert("請先連結錢包");
-        
+        // 每次發送前重新確認狀態，防止網路中途跳掉
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(contractAddress, contractABI, signer);
+
         const val = document.getElementById('newValue').value;
         if (!val) return alert("請輸入數字");
 
         try {
-            document.getElementById('status').innerText = "⏳ 正在發送 Sepolia 交易，請在 MetaMask 確認...";
+            document.getElementById('status').innerText = "⏳ 正在與 Sepolia 通訊，請在彈出的 MetaMask 確認...";
             
+            // 檢查餘額（避免靜默失敗）
+            const balance = await signer.getBalance();
+            if (balance.eq(0)) {
+                throw new Error("您的 Sepolia 餘額為 0，請先領取測試幣。");
+            }
+
+            // 發送交易
             const tx = await contract.set(val);
-            document.getElementById('status').innerText = "🚀 交易已送出，等待區塊鏈確認...\nHash: " + tx.hash;
+            document.getElementById('status').innerText = "🚀 交易已送出！等待區塊鏈確認...\nHash: " + tx.hash;
             
-            await tx.wait(); // 等待交易打包
-            document.getElementById('status').innerText = "🎉 更新成功！數值已寫入 Sepolia 合約。";
+            await tx.wait(); // 等待打包完成
+            document.getElementById('status').innerText = "🎉 更新成功！數值已寫入合約。";
             document.getElementById('newValue').value = ""; 
+
         } catch (err) {
             console.error(err);
-            document.getElementById('status').innerText = "❌ 交易失敗，請檢查餘額是否足夠 (Sepolia ETH)。";
+            let errMsg = err.message;
+            if (err.data && err.data.message) errMsg = err.data.message;
+            document.getElementById('status').innerText = "❌ 交易失敗：" + errMsg;
         }
     }
 </script>
