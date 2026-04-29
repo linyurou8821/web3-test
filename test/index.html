@@ -42,83 +42,62 @@
 </div>
 
 <script>
-    /* ⚠️ 請務必將下方地址換成你剛在 Remix 部署成功的那一個！ */
-    const contractAddress = "0x06395CBD3d3B6ba4bc4225a9291F0A80e4985887"; 
-    
-    const abi = ["function set(uint256 x) public", "function get() view returns (uint256)"];
-    let provider, signer, contract;
+    // 1. 設定正確的新合約地址
+const contractAddress = "0x06395CBD3d3B6ba4bc4225a9291F0A80e4985887"; 
 
-    async function verifyWallet() {
-        const input = document.getElementById('userAddrInput').value.trim().toLowerCase();
-        const status = document.getElementById('verifyStatus');
+// 2. 更新 ABI，確保函式名稱與合約中的 "updateMessage" 一致
+const abi = [
+    "function updateMessage(string newMessage) public",
+    "function message() public view returns (string)"
+];
+
+let provider, signer, contract;
+
+// 驗證錢包的部分保持不變...
+async function verifyWallet() {
+    // ... (省略部分代碼，請保留你之前的 verifyWallet 邏輯)
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+    contract = new ethers.Contract(contractAddress, abi, signer);
+    // ...
+}
+
+// 3. 修改發送交易的函式
+async function updateContract() {
+    const val = document.getElementById('dataInput').value; // 取得輸入框的值
+    const status = document.getElementById('txStatus');
+    const btn = document.getElementById('sendBtn');
+
+    if (!val) return alert("請輸入內容");
+
+    try {
+        btn.disabled = true;
+        status.className = "status";
+        status.innerText = "⏳ 正在請求 MetaMask 確認...";
+
+        // 呼叫正確的函式名稱：updateMessage
+        // .toString() 確保傳入的是字串
+        const tx = await contract.updateMessage(val.toString(), { 
+            gasLimit: 100000 
+        });
         
-        if (!input || !input.startsWith('0x')) return alert("請輸入有效的錢包地址");
-        if (!window.ethereum) return alert("未偵測到 MetaMask");
+        status.className = "status";
+        status.innerHTML = `🚀 交易已送出！等待確認中...<br>Hash: <small>${tx.hash}</small>`;
+        
+        await tx.wait(); // 等待區塊鏈打包
+        status.className = "status success";
+        status.innerText = "🎉 成功！訊息已更新至 HelloWorld 合約。";
+        document.getElementById('dataInput').value = "";
 
-        try {
-            // 1. 強制切換到 Sepolia (0xaa36a7)
-            await window.ethereum.request({
-                method: 'wallet_switchEthereumChain',
-                params: [{ chainId: '0xaa36a7' }],
-            });
-
-            // 2. 獲取連線地址
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            const currentAcc = accounts[0].toLowerCase();
-
-            if (input !== currentAcc) {
-                status.className = "status error";
-                status.innerText = "❌ 地址不匹配！請檢查輸入或切換 MetaMask 帳號。";
-                return;
-            }
-
-            // 3. 初始化合約連線
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            signer = provider.getSigner();
-            contract = new ethers.Contract(contractAddress, abi, signer);
-
-            status.className = "status success";
-            status.innerText = "✅ 驗證成功！網路已設為 Sepolia。";
-            document.getElementById('interaction').style.display = 'block';
-
-        } catch (e) {
-            status.className = "status error";
-            status.innerText = "連線失敗: " + e.message;
-        }
+    } catch (e) {
+        console.error(e);
+        status.className = "status error";
+        status.innerText = "❌ 失敗：" + (e.data?.message || e.message);
+    } finally {
+        btn.disabled = false;
     }
-
-    async function updateContract() {
-        const val = document.getElementById('dataInput').value;
-        const status = document.getElementById('txStatus');
-        const btn = document.getElementById('sendBtn');
-
-        if (!val) return alert("請輸入數字");
-
-        try {
-            btn.disabled = true;
-            status.className = "status";
-            status.innerText = "⏳ 正在請求 MetaMask 確認...";
-
-            // 手動設定 Gas Limit 避免預估失敗 (reverted)
-            const tx = await contract.set(val, { gasLimit: 100000 });
-            
-            status.className = "status";
-            status.innerHTML = `🚀 交易已送出！等待確認中...<br>Hash: <small>${tx.hash}</small>`;
-            
-            await tx.wait();
-            status.className = "status success";
-            status.innerText = "🎉 寫入成功！數值已儲存在區塊鏈上。";
-            document.getElementById('dataInput').value = "";
-
-        } catch (e) {
-            console.error(e);
-            status.className = "status error";
-            status.innerText = "❌ 交易失敗：" + (e.data?.message || e.message);
-        } finally {
-            btn.disabled = false;
-        }
-    }
-</script>
+}
+</script>    
 
 </body>
 </html>
