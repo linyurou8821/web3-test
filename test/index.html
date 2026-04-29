@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Web3 合約互動測試</title>
+    <title>Web3 合約互動測試 - 最終修復版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; line-height: 1.5; }
@@ -26,78 +26,108 @@
     
     <div class="step-box">
         <strong>第一步：身分驗證</strong>
-        <p style="font-size: 0.85rem; color: #666;">請貼上您的 MetaMask 地址：</p>
-        <input type="text" id="userAddrInput" placeholder="0x...">
+        <p style="font-size: 0.85rem; color: #666;">請貼上您的 MetaMask 錢包地址：</p>
+        <input type="text" id="userAddrInput" placeholder="0x6aC...">
         <button onclick="verifyWallet()">連結並切換至 Sepolia</button>
         <div id="verifyStatus" class="status"></div>
     </div>
 
     <div id="interaction" class="step-box">
-        <strong>第二步：寫入數值</strong>
-        <p style="font-size: 0.85rem; color: #666;">輸入要儲存的整數：</p>
-        <input type="number" id="dataInput" placeholder="例如: 999">
+        <strong>第二步：寫入新訊息</strong>
+        <p style="font-size: 0.85rem; color: #666;">輸入要儲存的文字或數字：</p>
+        <input type="text" id="dataInput" placeholder="例如: Hello World">
         <button id="sendBtn" onclick="updateContract()" style="background: #28a745;">發送交易</button>
         <div id="txStatus" class="status"></div>
     </div>
 </div>
 
 <script>
-    // 1. 設定正確的新合約地址
-const contractAddress = "0x06395CBD3d3B6ba4bc4225a9291F0A80e4985887"; 
+    // 1. 設定新部署的 HelloWorld 合約地址
+    const contractAddress = "0x06395CBD3d3B6ba4bc4225a9291F0A80e4985887"; 
 
-// 2. 更新 ABI，確保函式名稱與合約中的 "updateMessage" 一致
-const abi = [
-    "function updateMessage(string newMessage) public",
-    "function message() public view returns (string)"
-];
+    // 2. 設定正確的 ABI
+    const abi = [
+        "function updateMessage(string newMessage) public",
+        "function message() public view returns (string)"
+    ];
 
-let provider, signer, contract;
+    let provider, signer, contract;
 
-// 驗證錢包的部分保持不變...
-async function verifyWallet() {
-    // ... (省略部分代碼，請保留你之前的 verifyWallet 邏輯)
-    provider = new ethers.providers.Web3Provider(window.ethereum);
-    signer = provider.getSigner();
-    contract = new ethers.Contract(contractAddress, abi, signer);
-    // ...
-}
-
-// 3. 修改發送交易的函式
-async function updateContract() {
-    const val = document.getElementById('dataInput').value; // 取得輸入框的值
-    const status = document.getElementById('txStatus');
-    const btn = document.getElementById('sendBtn');
-
-    if (!val) return alert("請輸入內容");
-
-    try {
-        btn.disabled = true;
-        status.className = "status";
-        status.innerText = "⏳ 正在請求 MetaMask 確認...";
-
-        // 呼叫正確的函式名稱：updateMessage
-        // .toString() 確保傳入的是字串
-        const tx = await contract.updateMessage(val.toString(), { 
-            gasLimit: 100000 
-        });
+    async function verifyWallet() {
+        const input = document.getElementById('userAddrInput').value.trim().toLowerCase();
+        const status = document.getElementById('verifyStatus');
         
-        status.className = "status";
-        status.innerHTML = `🚀 交易已送出！等待確認中...<br>Hash: <small>${tx.hash}</small>`;
-        
-        await tx.wait(); // 等待區塊鏈打包
-        status.className = "status success";
-        status.innerText = "🎉 成功！訊息已更新至 HelloWorld 合約。";
-        document.getElementById('dataInput').value = "";
+        if (!input || !input.startsWith('0x')) return alert("請輸入有效的錢包地址");
+        if (!window.ethereum) return alert("未偵測到 MetaMask，請安裝擴充功能。");
 
-    } catch (e) {
-        console.error(e);
-        status.className = "status error";
-        status.innerText = "❌ 失敗：" + (e.data?.message || e.message);
-    } finally {
-        btn.disabled = false;
+        try {
+            // 強制切換到 Sepolia 測試網
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: '0xaa36a7' }],
+            });
+
+            // 請求帳號授權
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const currentAcc = accounts[0].toLowerCase();
+
+            if (input !== currentAcc) {
+                status.className = "status error";
+                status.innerText = "❌ 地址不匹配！請確保 MetaMask 選中的是該帳號。";
+                return;
+            }
+
+            // 初始化 ethers 物件
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+            contract = new ethers.Contract(contractAddress, abi, signer);
+
+            status.className = "status success";
+            status.innerText = "✅ 驗證成功！網路已設為 Sepolia。";
+            document.getElementById('interaction').style.display = 'block';
+
+        } catch (e) {
+            status.className = "status error";
+            status.innerText = "連線失敗: " + e.message;
+        }
     }
-}
-</script>    
+
+    async function updateContract() {
+        const val = document.getElementById('dataInput').value;
+        const status = document.getElementById('txStatus');
+        const btn = document.getElementById('sendBtn');
+
+        if (!val) return alert("請輸入內容");
+
+        try {
+            btn.disabled = true;
+            status.className = "status";
+            status.innerText = "⏳ 正在等待 MetaMask 確認交易...";
+
+            // 呼叫 updateMessage，並手動設定 GasLimit
+            const tx = await contract.updateMessage(val.toString(), { 
+                gasLimit: 120000 
+            });
+            
+            status.className = "status";
+            status.innerHTML = `🚀 交易已送出！等待區塊鏈打包...<br>Hash: <small>${tx.hash}</small>`;
+            
+            await tx.wait(); // 等待交易完成
+
+            status.className = "status success";
+            status.innerText = "🎉 成功！新訊息已儲存到區塊鏈。";
+            document.getElementById('dataInput').value = "";
+
+        } catch (e) {
+            console.error(e);
+            status.className = "status error";
+            // 嘗試抓取更具體的錯誤原因
+            status.innerText = "❌ 失敗：" + (e.data?.message || e.message);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
 
 </body>
 </html>
